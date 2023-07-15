@@ -5,9 +5,7 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import plotly.offline
 
-import sys
-sys.path.append("E:\\LCCN_Local\PycharmProjects\\")
-from toolbox.signals import epochingTool
+from functions.signals import epochingTool
 
 
 # FFT

@@ -8,8 +8,9 @@ import plotly.offline
 from plotly.subplots import make_subplots
 import plotly.express as px
 
-def timeseries_spectra(signals, simLength, transient, regionLabels,
-                       mode="html", timescale=None, param=None, folder="figures",
+
+def timeseries_spectra(signals, simLength, transient, regionLabels, timescale="ms", yaxis="Voltage (mV)",
+                       mode="html", param=None, folder="figures", height=400, width=800,
                        freqRange=[2, 40], opacity=1, title="", auto_open=True):
 
     if "anim" in mode:
@@ -90,23 +91,30 @@ def timeseries_spectra(signals, simLength, transient, regionLabels,
 
 
     else:
+
         fig = make_subplots(rows=1, cols=2, specs=[[{}, {}]], column_widths=[0.7, 0.3], horizontal_spacing=0.15)
 
-        timepoints = np.arange(start=transient, stop=simLength, step=len(signals[0])/(simLength-transient))
+        if timescale in ["sec", "seconds", "s", "second"]:
+            transient = 1000 * transient
+            simLength = 1000 * simLength
+
+        sampling = len(signals[0])/(simLength-transient)  # datapoints/timestep
+
+        timepoints = np.arange(start=transient, stop=simLength, step=1/sampling)
 
         cmap = px.colors.qualitative.Plotly
 
-        freqs = np.arange(len(signals[0]) / 2)
+        freqs = np.arange(len(signals[0]) / 2)  #
         freqs = freqs / ((simLength - transient) / 1000)  # simLength (ms) / 1000 -> segs
 
         for i, signal in enumerate(signals):
 
             # Timeseries
-            if len(signal) < 8000:
+            if simLength < 8000:
                 fig.add_trace(go.Scatter(x=timepoints, y=signal, name=regionLabels[i], opacity=opacity,
                                          legendgroup=regionLabels[i], marker_color=cmap[i%len(cmap)]), row=1, col=1)
             else:
-                fig.add_trace(go.Scatter(x=timepoints[:8000], y=signal[:8000], name=regionLabels[i], opacity=opacity,
+                fig.add_trace(go.Scatter(x=timepoints[:int(8000*sampling)], y=signal[:int(8000*sampling)], name=regionLabels[i], opacity=opacity,
                                          legendgroup=regionLabels[i], marker_color=cmap[i%len(cmap)]), row=1, col=1)
 
             # Spectra
@@ -122,8 +130,8 @@ def timeseries_spectra(signals, simLength, transient, regionLabels,
 
 
             fig.update_layout(xaxis=dict(title="Time (ms)"), xaxis2=dict(title="Frequency (Hz)"),
-                              yaxis=dict(title="Voltage (mV)"), yaxis2=dict(title="Power (dB)"),
-                              template="plotly_white", title=title, height=400, width=900)
+                              yaxis=dict(title=yaxis), yaxis2=dict(title="Power (dB)"),
+                              template="plotly_white", title=title, height=height, width=width)
 
         if title is None:
             title = "TEST_noTitle"
@@ -139,67 +147,205 @@ def timeseries_spectra(signals, simLength, transient, regionLabels,
             plotly.offline.iplot(fig)
 
 
-
-def timeseries_phaseplane(v1, v2, time, mode="html", params=["y0", "y3"], speed=4, folder="figures",
+def timeseries_phaseplane(time, v1, v2, v3=None, mode="html", params=["y0", "y3"], speed=4, folder="figures",
                         opacity=0.7, title="", auto_open=True):
 
-    speed = speed if speed >= 1 else 1
-    slow = 0 if speed >=1 else 10/speed
+    if len(params) == 3:
 
-    fig = make_subplots(rows=2, cols=3, row_heights=[0.8, 0.2],
-                        column_widths=[0.2, 0.6, 0.2], vertical_spacing=0.4,
-                        specs=[[{}, {}, {}], [{"colspan": 3}, {}, {}]])
+        speed = speed if speed >= 1 else 1
+        slow = 0 if speed >= 1 else 10 / speed
 
-    # Add initial traces: lines
-    fig.add_trace(go.Scatter(x=time, y=v1, marker=dict(color="cornflowerblue", opacity=opacity), showlegend=False), row=2,
-                  col=1)
-    fig.add_trace(go.Scatter(x=[v2[0]], y=[v1[0]], marker=dict(color="cornflowerblue", opacity=opacity), showlegend=False),
-                  row=1, col=2)
+        fig = make_subplots(rows=2, cols=1, row_heights=[0.85, 0.15],
+                            vertical_spacing=0.15,
+                            specs=[[{"type":"scene"}], [{}]])
 
-    # Add initial traces: refs
-    fig.add_trace(go.Scatter(x=[time[0]], y=[v1[0]], marker=dict(color="red", opacity=opacity), showlegend=False), row=2,
-                  col=1)
-    fig.add_trace(go.Scatter(x=[v2[0]], y=[v1[0]], marker=dict(color="red", opacity=opacity), showlegend=False), row=1,
-                  col=2)
+        # Add initial traces: lines
+        fig.add_trace(go.Scatter(x=time, y=v1, marker=dict(color="cornflowerblue", opacity=opacity), showlegend=False),
+                      row=2, col=1)
+        fig.add_trace(
+            go.Scatter3d(x=[v2[0]], y=[v1[0]], z=[v3[0]], mode="lines", line=dict(color="cornflowerblue",  width=7),
+                         opacity=opacity, showlegend=False), row=1, col=1)
 
-    fig.update(frames=[go.Frame(data=[go.Scatter(x=v2[:i], y=v1[:i]),
-                                      go.Scatter(x=[time[i]], y=[v1[i]]),
-                                      go.Scatter(x=[v2[i]], y=[v1[i]])],
-                                traces=[1, 2, 3], name=str(t)) for i, t in enumerate(time) if (i > 0) & (i % speed == 0)])
+        # Add initial traces: refs
+        fig.add_trace(go.Scatter(x=[time[0]], y=[v1[0]], marker=dict(color="red", opacity=opacity), showlegend=False),
+                      row=2, col=1)
+        fig.add_trace(go.Scatter3d(x=[v2[0]], y=[v1[0]], z=[v3[0]], marker=dict(color="red", opacity=opacity, size=5), showlegend=False),
+                      row=1, col=1)
+
+        fig.update(frames=[go.Frame(data=[go.Scatter3d(x=v2[:i], y=v1[:i], z=v3[:i]),
+                                          go.Scatter(x=[time[i]], y=[v1[i]]),
+                                          go.Scatter3d(x=[v2[i]], y=[v1[i]], z=[v3[i]])],
+                                    traces=[1, 2, 3], name=str(t)) for i, t in enumerate(time) if
+                           (i > 0) & (i % speed == 0)])
+
+        # CONTROLS : Add sliders and buttons
+        fig.update_layout(template="plotly_white", height=700, width=700,
+                          scene=dict(camera=dict(eye=dict(x=1.25, y=1.25, z=1), center=dict(z=-0.25)),
+                              xaxis=dict(title=params[1], range=[min(v2), max(v2)]),
+                              yaxis=dict(title=params[0], range=[min(v1), max(v1)]),
+                              zaxis=dict(title=params[2], range=[min(v3), max(v3)])),
+
+                          xaxis=dict(title="Time (ms)"), yaxis=dict(title=params[0]),
+
+                          sliders=[dict(
+                              steps=[
+                                  dict(method='animate',
+                                       args=[[str(t)], dict(mode="immediate",
+                                                            frame=dict(duration=1 * slow, redraw=True,
+                                                                       easing="cubic-in-out"),
+                                                            transition=dict(duration=1 * slow))], label=str(t)) for i, t
+                                  in
+                                  enumerate(time) if (i > 0) & (i % speed == 0)],
+                              transition=dict(duration=1 * slow), xanchor="left", x=0.175, y=0.3,
+                              currentvalue=dict(font=dict(size=15, color="black"), prefix="Time (ms) - ", visible=True,
+                                                xanchor="right"),
+                              len=0.7, tickcolor="white", font=dict(color="white"))],
+
+                          updatemenus=[
+                              dict(type="buttons", showactive=False, x=0, y=0.25, xanchor="left", direction="left",
+                                   buttons=[
+                                       dict(label="\u23f5", method="animate",
+                                            args=[None,
+                                                  dict(frame=dict(duration=1 * slow, redraw=True,
+                                                                  easing="cubic-in-out"),
+                                                       transition=dict(duration=1 * slow),
+                                                       fromcurrent=True, mode='immediate')]),
+                                       dict(label="\u23f8", method="animate",
+                                            args=[[None],
+                                                  dict(frame=dict(duration=1 * slow, redraw=True,
+                                                                  easing="cubic-in-out"),
+                                                       transition=dict(duration=1 * slow),
+                                                       mode="immediate")])])])
+
+        if "html" in mode:
+            pio.write_html(fig, file=folder + "/Animated_timeseriesPhasePlane3D_" + title + ".html", auto_open=auto_open,
+                           auto_play=False)
+
+        elif "inline" in mode:
+            plotly.offline.iplot(fig)
+
+    else:
+        speed = speed if speed >= 1 else 1
+        slow = 0 if speed >=1 else 10/speed
+
+        fig = make_subplots(rows=2, cols=3, row_heights=[0.8, 0.2],
+                            column_widths=[0.2, 0.6, 0.2], vertical_spacing=0.4,
+                            specs=[[{}, {}, {}], [{"colspan": 3}, {}, {}]])
+
+        # Add initial traces: lines
+        fig.add_trace(go.Scatter(x=time, y=v1, marker=dict(color="cornflowerblue", opacity=opacity), showlegend=False), row=2,
+                      col=1)
+        fig.add_trace(go.Scatter(x=[v2[0]], y=[v1[0]], marker=dict(color="cornflowerblue", opacity=opacity), showlegend=False),
+                      row=1, col=2)
+
+        # Add initial traces: refs
+        fig.add_trace(go.Scatter(x=[time[0]], y=[v1[0]], marker=dict(color="red", opacity=opacity), showlegend=False), row=2,
+                      col=1)
+        fig.add_trace(go.Scatter(x=[v2[0]], y=[v1[0]], marker=dict(color="red", opacity=opacity), showlegend=False), row=1,
+                      col=2)
+
+        fig.update(frames=[go.Frame(data=[go.Scatter(x=v2[:i], y=v1[:i]),
+                                          go.Scatter(x=[time[i]], y=[v1[i]]),
+                                          go.Scatter(x=[v2[i]], y=[v1[i]])],
+                                    traces=[1, 2, 3], name=str(t)) for i, t in enumerate(time) if (i > 0) & (i % speed == 0)])
+
+        # CONTROLS : Add sliders and buttons
+        fig.update_layout(template="plotly_white", height=600, width=700,
+                          xaxis2=dict(title=params[1], range=[min(v2), max(v2)]),
+                          yaxis2=dict(title=params[0], range=[min(v1), max(v1)]),
+                          xaxis4=dict(title="Time (ms)"), yaxis4=dict(title=params[0]),
+
+                          sliders=[dict(
+                              steps=[
+                                  dict(method='animate',
+                                       args=[[str(t)], dict(mode="immediate",
+                                                            frame=dict(duration=1*slow, redraw=False, easing="cubic-in-out"),
+                                                            transition=dict(duration=1*slow))], label=str(t)) for i, t in
+                                  enumerate(time) if (i > 0) & (i % speed == 0)],
+                              transition=dict(duration=1*slow), xanchor="left", x=0.175, y=0.375,
+                              currentvalue=dict(font=dict(size=15, color="black"), prefix="Time (ms) - ", visible=True, xanchor="right"),
+                              len=0.7, tickcolor="white", font=dict(color="white"))],
+
+                          updatemenus=[dict(type="buttons", showactive=False, x=0, y=0.275, xanchor="left", direction="left",
+                                            buttons=[
+                                                dict(label="\u23f5", method="animate",
+                                                     args=[None,
+                                                           dict(frame=dict(duration=1*slow, redraw=False, easing="cubic-in-out"),
+                                                                transition=dict(duration=1*slow),
+                                                                fromcurrent=True, mode='immediate')]),
+                                                dict(label="\u23f8", method="animate",
+                                                     args=[[None],
+                                                           dict(frame=dict(duration=1*slow, redraw=False, easing="cubic-in-out"),
+                                                                transition=dict(duration=1*slow),
+                                                                mode="immediate")])])])
+
+
+        if "html" in mode:
+            pio.write_html(fig, file=folder + "/Animated_timeseriesPhasePlane_" + title + ".html", auto_open=auto_open, auto_play=False)
+
+        elif "inline" in mode:
+            plotly.offline.iplot(fig)
+
+
+def kuramoto_polar(phases, time_, speed, timescale="ms", mode="html", folder="figures", title="", auto_open=True):
+
+    phases = phases[:, ::speed]
+    time_ = time_[::speed]
+
+    kuramoto_order = [1 / len(phases) * np.sum(np.exp(1j * phases[:, i])) for i, dp in enumerate(phases[0])]
+    KO_magnitude = np.abs(kuramoto_order)
+    KO_angle = np.angle(kuramoto_order)
+
+    wraped_phase = (phases % (2 * np.pi))
+    cmap = px.colors.qualitative.Plotly + px.colors.qualitative.Light24 + px.colors.qualitative.Set2
+
+    # With points
+    fig = go.Figure()
+
+    ## Add Kuramoto Order
+    fig.add_trace(go.Scatterpolar(theta=[KO_angle[0]], r=[KO_magnitude[0]], thetaunit="radians",
+                                  name="KO", mode="markers", marker=dict(size=6, color="darkslategray")))
+
+    ## Add each region phase
+    fig.add_trace(go.Scatterpolar(theta=wraped_phase[:, 0], r=[1]*len(wraped_phase), thetaunit="radians",
+                                  name="ROIs", mode="markers", marker=dict(size=8, color=cmap), opacity=0.8))
+
+    fig.update(frames=[go.Frame(data=[go.Scatterpolar(theta=[KO_angle[i]], r=[KO_magnitude[i]]),
+                                      go.Scatterpolar(theta=wraped_phase[:, i])],
+                                traces=[0, 1], name=str(np.round(t, 3))) for i, t in enumerate(time_)])
 
     # CONTROLS : Add sliders and buttons
-    fig.update_layout(template="plotly_white", height=600, width=700,
-                      xaxis2=dict(title=params[1], range=[min(v2), max(v2)]),
-                      yaxis2=dict(title=params[0], range=[min(v1), max(v1)]),
-                      xaxis4=dict(title="Time (ms)"), yaxis4=dict(title=params[0]),
+    fig.update_layout(template="plotly_white", height=400, width=500, polar=dict(angularaxis_thetaunit="radians", ),
 
                       sliders=[dict(
                           steps=[
                               dict(method='animate',
                                    args=[[str(t)], dict(mode="immediate",
-                                                        frame=dict(duration=1*slow, redraw=False, easing="cubic-in-out"),
-                                                        transition=dict(duration=1*slow))], label=str(t)) for i, t in
-                              enumerate(time) if (i > 0) & (i % speed == 0)],
-                          transition=dict(duration=1*slow), xanchor="left", x=0.175, y=0.375,
-                          currentvalue=dict(font=dict(size=15, color="black"), prefix="Time (ms) - ", visible=True, xanchor="right"),
+                                                        frame=dict(duration=0, redraw=True, easing="cubic-in-out"),
+                                                        transition=dict(duration=0))], label=str(np.round(t, 3))) for
+                              i, t in enumerate(time_)],
+                          transition=dict(duration=0), xanchor="left", x=0.35, y=-0.15,
+                          currentvalue=dict(font=dict(size=15, color="black"), prefix="Time (%s) - " % (timescale), visible=True,
+                                            xanchor="right"),
                           len=0.7, tickcolor="white", font=dict(color="white"))],
 
-                      updatemenus=[dict(type="buttons", showactive=False, x=0, y=0.275, xanchor="left", direction="left",
-                                        buttons=[
-                                            dict(label="\u23f5", method="animate",
-                                                 args=[None,
-                                                       dict(frame=dict(duration=1*slow, redraw=False, easing="cubic-in-out"),
-                                                            transition=dict(duration=1*slow),
-                                                            fromcurrent=True, mode='immediate')]),
-                                            dict(label="\u23f8", method="animate",
-                                                 args=[[None],
-                                                       dict(frame=dict(duration=1*slow, redraw=False, easing="cubic-in-out"),
-                                                            transition=dict(duration=1*slow),
-                                                            mode="immediate")])])])
-
+                      updatemenus=[
+                          dict(type="buttons", showactive=False, x=0.05, y=-0.4, xanchor="left", direction="left",
+                               buttons=[
+                                   dict(label="\u23f5", method="animate",
+                                        args=[None,
+                                              dict(frame=dict(duration=0, redraw=True, easing="cubic-in-out"),
+                                                   transition=dict(duration=0),
+                                                   fromcurrent=True, mode='immediate')]),
+                                   dict(label="\u23f8", method="animate",
+                                        args=[[None],
+                                              dict(frame=dict(duration=0, redraw=True, easing="cubic-in-out"),
+                                                   transition=dict(duration=0),
+                                                   mode="immediate")])])])
 
     if "html" in mode:
-        pio.write_html(fig, file=folder + "/Animated_timeseriesPhasePlane_" + title + ".html", auto_open=auto_open, auto_play=False)
+        pio.write_html(fig, file=folder + "/Animated_PolarKuramoto_" + title + ".html", auto_open=auto_open,
+                       auto_play=False)
 
     elif "inline" in mode:
         plotly.offline.iplot(fig)
